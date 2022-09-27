@@ -7,6 +7,9 @@ import random
 from sklearn import linear_model
 
 
+TARGET_DIRECTORY = "docs"
+EXTENSION = "xlsx"
+
 class Representer:
  
     instance = None
@@ -16,10 +19,10 @@ class Representer:
         self.ys = []
         self.model = linear_model.LinearRegression()
 
-    def register(self, a, b, c, d, seconds):
-        self.xs.append([a, b, c, d])
+    def register(self, n_sheets, n_cols, n_rows, data_percentage, seconds):
+        self.xs.append([n_sheets, n_cols, n_rows, data_percentage])
         self.ys.append(seconds.total_seconds())
-        print(a, b, c, d, " : ", seconds)
+        print(n_sheets, n_cols, n_rows, data_percentage, " : ", seconds)
 
     def get_factors(self):
         self.model.fit(self.xs, self.ys)
@@ -32,12 +35,19 @@ class Representer:
             cls.instance = Representer()
         return cls.instance
 
-def timer(name, callable, *args):
-    global repr
-    a = time.now()
-    callable(*args)
-    b = time.now()
-    Representer.get_instance().register(*name, b - a)
+
+def get_name(n_sheets : int, n_cols : int, n_rows : int, data_percentage : float) -> str:
+    return f"{TARGET_DIRECTORY}/{n_sheets}-{n_cols}-{n_rows}-{data_percentage}.{EXTENSION}"
+
+def timer(representer):
+    def _timer(func):
+        def _wrapper(*args, **kwargs):
+            a = time.now()
+            func(*args, **kwargs)
+            b = time.now()
+            representer.register(*args, b - a)
+        return _wrapper
+    return _timer
     
 
 class Workbook:
@@ -56,7 +66,7 @@ class Workbook:
 
 def create_workbook(name:str, n_sheets:int, n_cols:int, n_rows:int, data_percentage:float):
     columns = list(map(str, range(n_cols)))
-    writter = Workbook(f"docs\{name}.xlsx")
+    writter = Workbook(name)
         
     for s in range(n_sheets):
         values = np.random.choice([1, np.nan], size=(n_rows, n_cols), p=[data_percentage, 1 - data_percentage])
@@ -66,10 +76,10 @@ def create_workbook(name:str, n_sheets:int, n_cols:int, n_rows:int, data_percent
 
 
 def create_file_sequence(a_callable, no_tqdm=True):
-    sheet_variants = [1, 5, 10]           # 6
-    cols_count_variants = [10, 50, 100, 400, 700]  # 6
-    rows_count_variants = [10, 50, 100, 400, 700]  # 6
-    data_percentage_variants = [0.1, 0.5, 0.9]          # 5
+    sheet_variants = [1, 5, 10]                         # 3
+    cols_count_variants = [10, 50, 100, 400, 700]       # 5
+    rows_count_variants = [10, 50, 100, 400, 700]       # 5
+    data_percentage_variants = [0.1, 0.5, 0.9]          # 3
 
     if no_tqdm:
         def pipe(iterable, position):
@@ -87,19 +97,18 @@ def create_file_sequence(a_callable, no_tqdm=True):
 
 def create_test_data():
     create_file_sequence(                   
-            lambda a, b, c, d : create_workbook(f"{a}-{b}-{c}-{d}", 
+            lambda a, b, c, d : create_workbook(get_name(a, b, c, d), 
                                     n_sheets=a,
                                     n_cols=b,
                                     n_rows=c,
                                     data_percentage=d), no_tqdm=False)
 
 
+@timer(Representer.get_instance())
 def single_read(a, b, c, d):
-    timer((a, b, c, d),
-            (lambda aa, bb, cc, dd: lambda: pd.read_excel(f"docs\{aa}-{bb}-{cc}-{dd}.xlsx", sheet_name=None))(a, b, c, d))
+    pd.read_excel(get_name(a, b, c, d), sheet_name=None)
 
 def test_all_cases():
-    global repr
     create_file_sequence(lambda a, b, c, d: single_read(a, b, c, d))
     Representer.get_instance().get_factors()
 
